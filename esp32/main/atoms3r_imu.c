@@ -89,9 +89,93 @@ static reading_t s_readings[SENSOR_COUNT];
 static portMUX_TYPE s_lock = portMUX_INITIALIZER_UNLOCKED;
 static i2c_master_dev_handle_t s_dev;
 
+// Orientation and shake, derived from the samples. Read-only: nothing here
+// triggers an action, so a stray bump can't do anything but update this.
+typedef enum { ORIENT_UNKNOWN, ORIENT_FACE_UP, ORIENT_FACE_DOWN, ORIENT_ON_EDGE } orient_t;
+static const char *const ORIENT_NAMES[] = {"unknown", "face_up", "face_down", "on_edge"};
+#define ORIENT_HOLD_SAMPLES 5          // a posture must hold 0.5 s
+#define SHAKE_SPIKE_G 1.0f             // |accel| away from 1 g
+#define SHAKE_SPIKE_DPS 400.0f
+#define SHAKE_SPIKES 4                 // spikes inside the window
+#define SHAKE_WINDOW_US (1000LL * 1000)
+#define MOVING_G 0.15f
+#define MOVING_DPS 30.0f
+#define MOVING_US (1000LL * 1000)
+static orient_t s_orient = ORIENT_UNKNOWN;
+static int64_t s_orient_since_us;
+static int64_t s_last_motion_us;       // 0 = none yet
+static int64_t s_last_shake_us;        // 0 = none yet
+
+static orient_t classify(float ax, float ay, float az) {
+    if (az > 0.8f) return ORIENT_FACE_UP;
+    if (az < -0.8f) return ORIENT_FACE_DOWN;
+    if (fabsf(az) < 0.5f && (fabsf(ax) > 0.8f || fabsf(ay) > 0.8f)) return ORIENT_ON_EDGE;
+    return ORIENT_UNKNOWN;
+}
+
+// Called once per sample from the poll task only.
+static void update_gestures(const float *v, int64_t now) {
+    static orient_t candidate = ORIENT_UNKNOWN;
+    static int candidate_n;
+    static int64_t spikes[SHAKE_SPIKES];
+    static int spike_i;
+    float amag = sqrtf(v[SENSOR_ACC_X] * v[SENSOR_ACC_X] + v[SENSOR_ACC_Y] * v[SENSOR_ACC_Y] +
+                       v[SENSOR_ACC_Z] * v[SENSOR_ACC_Z]);
+    float gmag = sqrtf(v[SENSOR_GYR_X] * v[SENSOR_GYR_X] + v[SENSOR_GYR_Y] * v[SENSOR_GYR_Y] +
+                       v[SENSOR_GYR_Z] * v[SENSOR_GYR_Z]);
+    bool moving = fabsf(amag - 1.0f) > MOVING_G || gmag > MOVING_DPS;
+    bool spike = fabsf(amag - 1.0f) > SHAKE_SPIKE_G || gmag > SHAKE_SPIKE_DPS;
+    orient_t o = classify(v[SENSOR_ACC_X], v[SENSOR_ACC_Y], v[SENSOR_ACC_Z]);
+    if (o == candidate) {
+        if (candidate_n < ORIENT_HOLD_SAMPLES) candidate_n++;
+    } else {
+        candidate = o;
+        candidate_n = 1;
+    }
+    bool shook = false;
+    if (spike) {
+        spikes[spike_i] = now;
+        spike_i = (spike_i + 1) % SHAKE_SPIKES;
+        // The oldest of the last SHAKE_SPIKES spikes is the one about to be overwritten.
+        int64_t oldest = spikes[spike_i];
+        shook = oldest != 0 && now - oldest <= SHAKE_WINDOW_US;
+    }
+    taskENTER_CRITICAL(&s_lock);
+    if (candidate_n >= ORIENT_HOLD_SAMPLES && candidate != s_orient) {
+        s_orient = candidate;
+        s_orient_since_us = now;
+    }
+    if (moving) s_last_motion_us = now;
+    if (shook) {
+        s_last_shake_us = now;
+        memset(spikes, 0, sizeof(spikes));
+    }
+    taskEXIT_CRITICAL(&s_lock);
+}
+
 // sensors.read result: each reading with its value, unit and age in seconds;
 // stale readings are null; with no readings at all, an error.
-static cJSON *readings_result(const reading_t *readings, int64_t now_us) {
+typedef struct {
+    orient_t orient;
+    int64_t orient_since_us, last_motion_us, last_shake_us;
+} motion_t;
+
+static void add_motion(cJSON *payload, const motion_t *m, int64_t now_us) {
+    cJSON *o = cJSON_AddObjectToObject(payload, "motion");
+    if (!o) return;
+    cJSON_AddStringToObject(o, "orientation", ORIENT_NAMES[m->orient]);
+    if (m->orient != ORIENT_UNKNOWN) {
+        cJSON_AddNumberToObject(o, "orientation_for_s", (double)((now_us - m->orient_since_us) / 1000000));
+    }
+    cJSON_AddBoolToObject(o, "moving", m->last_motion_us && now_us - m->last_motion_us < MOVING_US);
+    if (m->last_shake_us) {
+        cJSON_AddNumberToObject(o, "last_shake_age_s", (double)((now_us - m->last_shake_us) / 1000000));
+    } else {
+        cJSON_AddNullToObject(o, "last_shake_age_s");
+    }
+}
+
+static cJSON *readings_result(const reading_t *readings, const motion_t *motion, int64_t now_us) {
     cJSON *result = cJSON_CreateObject();
     cJSON *payload = cJSON_CreateObject();
     if (!result || !payload) {
@@ -121,6 +205,7 @@ static cJSON *readings_result(const reading_t *readings, int64_t now_us) {
         cJSON_AddStringToObject(error, "message", "no motion sensor readings; the BMI270 may not be responding");
         return result;
     }
+    add_motion(payload, motion, now_us);
     cJSON_AddBoolToObject(result, "ok", true);
     cJSON_AddItemToObject(result, "payload", payload);
     return result;
@@ -216,6 +301,7 @@ static esp_err_t imu_poll(void) {
         s_readings[i] = (reading_t){.valid = true, .value = v[i], .at_us = now};
     }
     taskEXIT_CRITICAL(&s_lock);
+    update_gestures(v, now);
     return ESP_OK;
 }
 
@@ -266,6 +352,7 @@ cJSON *atoms3r_imu_command(void) {
     reading_t snapshot[SENSOR_COUNT];
     taskENTER_CRITICAL(&s_lock);
     memcpy(snapshot, s_readings, sizeof(snapshot));
+    motion_t motion = {s_orient, s_orient_since_us, s_last_motion_us, s_last_shake_us};
     taskEXIT_CRITICAL(&s_lock);
-    return readings_result(snapshot, esp_timer_get_time());
+    return readings_result(snapshot, &motion, esp_timer_get_time());
 }

@@ -1544,7 +1544,11 @@ static char *build_register_json(void) {
                 "up or down when still), rotation rate in degrees per second "
                 "and the chip's die temperature in degrees Celsius (a rough "
                 "guide only, not room temperature). Each reading has its age "
-                "in seconds; a sensor with no recent reading is null.",
+                "in seconds; a sensor with no recent reading is null. "
+                "Also a motion summary: orientation (face_up, face_down, "
+                "on_edge or unknown) and how long it has held, whether the "
+                "device is moving, and seconds since it was last shaken "
+                "(null if not since boot).",
                 nullptr, nullptr);
 #endif
 #if CONFIG_HOMEHUB_RETERMINAL_SHT4X
