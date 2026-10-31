@@ -25,3 +25,6 @@ void atoms3r_imu_init(void);
 // seconds. A reading with no recent value is null. Returns an owned cJSON
 // result, or NULL if out of memory.
 cJSON *atoms3r_imu_command(void);
+
+// Defined by the AtomS3R board file: queues a tap, which ends a call.
+void atoms3r_board_request_hangup(void);

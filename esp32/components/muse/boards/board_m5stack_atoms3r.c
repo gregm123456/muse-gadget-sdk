@@ -70,6 +70,7 @@
 #include "muse_audio.h"
 #include "muse_board.h"
 #include "muse_menu.h"
+#include "muse_voice.h"
 #include "muse_mem.h"
 
 static const char *TAG = "board";
@@ -116,6 +117,14 @@ static i2c_master_bus_handle_t s_sys_i2c, s_base_i2c;
 static i2c_master_dev_handle_t s_lp5562, s_pioe;
 static esp_lcd_panel_handle_t s_panel;
 static muse_gpio_button_t s_btn;
+
+/* Asks the button state machine for a tap, which ends a call. Set from the
+ * motion task (a shake) and consumed in poll_buttons. */
+static volatile bool s_hangup_req;
+void atoms3r_board_request_hangup(void)
+{
+    s_hangup_req = true;
+}
 
 static esp_err_t reg_write(i2c_master_dev_handle_t dev, uint8_t reg, uint8_t val)
 {
@@ -399,6 +408,14 @@ static unsigned poll_buttons(void)
                 st = PENDING;
                 t_edge = now;
             }
+        }
+    }
+    if (s_hangup_req) {
+        s_hangup_req = false;
+        if (st == IDLE && muse_voice_in_call()) {
+            out |= MUSE_BTN_TALK_PRESS;
+            st = PULSE;
+            t_edge = now;
         }
     }
     if (st == PENDING && !s_btn.pressed && now - t_edge >= pdMS_TO_TICKS(DOUBLE_TAP_MS)) {

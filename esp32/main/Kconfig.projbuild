@@ -533,6 +533,16 @@ menu "ESP32 Device SDK"
             (I2C address 0x68 on the board's internal bus) and answer
             sensors.read with the latest readings, in the chip's own axes.
 
+    config HOMEHUB_ATOMS3R_GESTURES
+        bool "AtomS3R motion gestures: shake hangs up, face-down sleeps the screen"
+        depends on HOMEHUB_ATOMS3R_IMU
+        default y
+        help
+            Shaking the device during a call hangs up. Lying face-down and
+            still for a few seconds puts the screen to sleep (once per time
+            it is laid down); a button press wakes it. Turn this off and the
+            motion data is still reported by sensors.read.
+
     config HOMEHUB_RETERMINAL_SHT4X_TEMP_OFFSET
         int "SHT4x temperature offset, in tenths of a degree Celsius"
         depends on HOMEHUB_RETERMINAL_SHT4X

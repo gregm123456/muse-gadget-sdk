@@ -25,6 +25,11 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "sdkconfig.h"
+#if CONFIG_HOMEHUB_ATOMS3R_GESTURES
+#include "muse_state.h"
+#include "muse_voice.h"
+#endif
 
 static const char *TAG = "atoms3r_imu";
 
@@ -101,6 +106,7 @@ static const char *const ORIENT_NAMES[] = {"unknown", "face_up", "face_down", "o
 #define MOVING_G 0.15f
 #define MOVING_DPS 30.0f
 #define MOVING_US (1000LL * 1000)
+#define FACE_DOWN_SLEEP_US (5LL * 1000 * 1000)   // face-down and still this long sleeps the screen
 static orient_t s_orient = ORIENT_UNKNOWN;
 static int64_t s_orient_since_us;
 static int64_t s_last_motion_us;       // 0 = none yet
@@ -151,6 +157,24 @@ static void update_gestures(const float *v, int64_t now) {
         memset(spikes, 0, sizeof(spikes));
     }
     taskEXIT_CRITICAL(&s_lock);
+#if CONFIG_HOMEHUB_ATOMS3R_GESTURES
+    static bool slept_this_posture;
+    if (candidate_n >= ORIENT_HOLD_SAMPLES && candidate != ORIENT_FACE_DOWN) slept_this_posture = false;
+    if (shook && muse_voice_in_call()) {
+        ESP_LOGI(TAG, "shake: hanging up");
+        atoms3r_board_request_hangup();
+    }
+    // Once per time it is laid down, so waking it with a button while it
+    // lies face-down isn't undone five seconds later.
+    if (s_orient == ORIENT_FACE_DOWN && !slept_this_posture && now - s_orient_since_us >= FACE_DOWN_SLEEP_US &&
+        now - s_last_motion_us >= FACE_DOWN_SLEEP_US && !muse_voice_in_call()) {
+        slept_this_posture = true;
+        if (!muse_state_asleep()) {
+            ESP_LOGI(TAG, "face-down and still: sleeping the screen");
+            muse_state_set_asleep(true);
+        }
+    }
+#endif
 }
 
 // sensors.read result: each reading with its value, unit and age in seconds;
