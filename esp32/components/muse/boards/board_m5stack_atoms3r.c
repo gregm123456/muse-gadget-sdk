@@ -244,7 +244,9 @@ static lv_display_t *display_start(lv_indev_t **touch)
     }
     const esp_lcd_panel_dev_config_t panel_cfg = {
         .reset_gpio_num = LCD_RST,
-        .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB,
+        // This panel wires red and blue the other way round: a red/green/blue test card
+        // showed blue/green/red until this was BGR.
+        .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_BGR,
         .bits_per_pixel = 16,
     };
     /* The ST7789 helper is generic MIPI DCS (CASET/RASET/RAMWR/MADCTL/COLMOD),
