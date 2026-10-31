@@ -426,8 +426,10 @@ static const muse_board_t s_board = {
     .diagonal_in = 0.85f,
     .talk_button = "screen",
     .aux_button = "screen",
-    .talk_hint = { LV_ALIGN_BOTTOM_MID, 0, -2 },
-    .aux_hint = { LV_ALIGN_BOTTOM_MID, 0, -2 },
+    // One button, so both hints share the bottom edge; the +-1 only tells the
+    // menu to put Down on the left and Select on the right instead of stacking.
+    .talk_hint = { LV_ALIGN_BOTTOM_MID, 1, -2 },
+    .aux_hint = { LV_ALIGN_BOTTOM_MID, -1, -2 },
     .frame_ms = 40,
     .init = init,
     .display_start = display_start,
