@@ -75,6 +75,7 @@ upstream licenses:
 | JD9853A initialization sequence in [`board_seeed_xiao_s3_147.c`](esp32/components/muse/boards/board_seeed_xiao_s3_147.c) | [Seeed-Studio/Seeed_GFX2](https://github.com/Seeed-Studio/Seeed_GFX2) | MIT, see [`Seeed_GFX2.txt`](esp32/devices/licenses/Seeed_GFX2.txt) |
 | ST7735S init sequence and pin/register values in [`board_m5stack_atoms3r.c`](esp32/components/muse/boards/board_m5stack_atoms3r.c) | [m5stack/M5GFX](https://github.com/m5stack/M5GFX) and [m5stack/M5Unified](https://github.com/m5stack/M5Unified) | MIT, Copyright (c) 2021 M5Stack, retained in the file header |
 | [`esp32/main/pixel_font.c`](esp32/main/pixel_font.c) | Adafruit GFX `glcdfont.c` | BSD-2-Clause, in the file header |
+| [`esp32/main/atoms3r_bmi270_config.h`](esp32/main/atoms3r_bmi270_config.h) | Bosch Sensortec [BMI270_SensorAPI](https://github.com/boschsensortec/BMI270_SensorAPI) `bmi270.c` v2.86.1, the chip's configuration blob | BSD-3-Clause, in the file header |
 | [`esp32/components/muse/eink/fonts/montserrat.ttf`](esp32/components/muse/eink/fonts) | Montserrat Medium, via LVGL v9.5.0 | SIL Open Font License 1.1 |
 | [`esp32/components/muse/eink/fonts/unscii.ttf`](esp32/components/muse/eink/fonts) | unscii-8 | Public domain |
 | [`esp32/components/muse/eink/fonts/symbols.ttf`](esp32/components/muse/eink/fonts) | Font Awesome 5 Free, via LVGL v9.5.0 | SIL Open Font License 1.1 (icons CC BY 4.0) |

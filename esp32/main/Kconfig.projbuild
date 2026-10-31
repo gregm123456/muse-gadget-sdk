@@ -524,6 +524,15 @@ menu "ESP32 Device SDK"
             over I2C (E100x: SDA GPIO19, SCL GPIO20; Sticky: SDA GPIO1,
             SCL GPIO0; address 0x44) and answer sensors.read.
 
+    config HOMEHUB_ATOMS3R_IMU
+        bool "AtomS3R onboard BMI270 motion sensor (sensors.read)"
+        depends on MUSE_BOARD_M5STACK_ATOMS3R
+        default y
+        help
+            Poll the BMI270 accelerometer, gyroscope and die temperature
+            (I2C address 0x68 on the board's internal bus) and answer
+            sensors.read with the latest readings, in the chip's own axes.
+
     config HOMEHUB_RETERMINAL_SHT4X_TEMP_OFFSET
         int "SHT4x temperature offset, in tenths of a degree Celsius"
         depends on HOMEHUB_RETERMINAL_SHT4X

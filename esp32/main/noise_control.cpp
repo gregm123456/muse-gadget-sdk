@@ -1537,6 +1537,16 @@ static char *build_register_json(void) {
                 "humidity need the Grove AHT20 plugged in.",
                 nullptr, nullptr);
 #endif
+#if CONFIG_HOMEHUB_ATOMS3R_IMU
+    add_command(commands, "sensors.read",
+                "Read the onboard motion sensor, in the chip's own axes: "
+                "acceleration in g (x, y, z; about 1 g on the axis pointing "
+                "up or down when still), rotation rate in degrees per second "
+                "and the chip's die temperature in degrees Celsius (a rough "
+                "guide only, not room temperature). Each reading has its age "
+                "in seconds; a sensor with no recent reading is null.",
+                nullptr, nullptr);
+#endif
 #if CONFIG_HOMEHUB_RETERMINAL_SHT4X
     add_command(commands, "sensors.read",
                 "Read the onboard air sensor: temperature in degrees Celsius "

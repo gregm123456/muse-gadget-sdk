@@ -73,6 +73,9 @@
 #if CONFIG_HOMEHUB_SENSECAP_SENSORS
 #include "sensecap_sensors.h"
 #endif
+#if CONFIG_HOMEHUB_ATOMS3R_IMU
+#include "atoms3r_imu.h"
+#endif
 #if CONFIG_HOMEHUB_RETERMINAL_SHT4X
 #include "reterminal_sht4x.h"
 #endif
@@ -1937,6 +1940,11 @@ static cJSON *on_ws_command(
         return sensecap_sensors_command();
     }
 #endif
+#if CONFIG_HOMEHUB_ATOMS3R_IMU
+    if (strcmp(command, "sensors.read") == 0) {
+        return atoms3r_imu_command();
+    }
+#endif
 #if CONFIG_HOMEHUB_RETERMINAL_SHT4X
     if (strcmp(command, "sensors.read") == 0) {
         return reterminal_sht4x_command();
@@ -2760,6 +2768,9 @@ void app_run(void) {
 #endif
 #if CONFIG_HOMEHUB_SENSECAP_SENSORS
     sensecap_sensors_init();
+#endif
+#if CONFIG_HOMEHUB_ATOMS3R_IMU
+    atoms3r_imu_init();
 #endif
 #if CONFIG_HOMEHUB_RETERMINAL_SHT4X
     reterminal_sht4x_init();

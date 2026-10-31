@@ -332,6 +332,18 @@ chip's own USB serial port: `tools/muse/board.sh flash cores3`. If esptool
 can't connect, hold RST for 3 s, until the green LED lights, to enter the
 bootloader.
 
+The M5Stack AtomS3R with the Atomic Voice Base runs the full UI on the
+ESP32-S3-PICO-1-N8R8 (8 MB flash, 8 MB octal PSRAM). The 0.85" ST7735S screen
+is also the one push button (GPIO 41): hold it to send a voice note, tap to
+start or end a live call, double-tap to open the menu (with the menu open, a
+tap steps down and a hold selects). The mic and speaker are the base's ES8311,
+clocked from BCLK; its amp is enabled through a PI4IOE5V6408. USB powered only:
+GPIO 41 isn't an RTC pin, so there's no deep-sleep wake and no software power
+off. Muse reads the BMI270 (accelerometer, gyroscope, die temperature) with
+`sensors.read`, in the chip's own axes. The BMM150 magnetometer, IR LED and
+Grove port aren't used. Build and flash with
+`tools/muse/board.sh build atoms3r` and `flash atoms3r`.
+
 The M5Stack StickC Plus2 runs the full UI on a classic ESP32, as does the Core2
 below. It has
 8 MB of flash and 2 MB of PSRAM, so it uses the 8 MB partition table too. The
