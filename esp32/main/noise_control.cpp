@@ -1548,7 +1548,13 @@ static char *build_register_json(void) {
                 "Also a motion summary: orientation (face_up, face_down, "
                 "on_edge or unknown) and how long it has held, whether the "
                 "device is moving, and seconds since it was last shaken "
-                "(null if not since boot).",
+                "(null if not since boot), plus a history since boot: total shakes, "
+                "seconds spent moving, and a newest-first list of recent "
+                "events (orientation changes, shakes, started or stopped "
+                "moving), each with its age in seconds. The history is kept "
+                "in memory only, holds the last 48 events and starts over "
+                "when the device restarts; check uptime_s for how far back it "
+                "can go.",
                 nullptr, nullptr);
 #endif
 #if CONFIG_HOMEHUB_RETERMINAL_SHT4X

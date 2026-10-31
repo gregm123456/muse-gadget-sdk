@@ -107,6 +107,30 @@ static const char *const ORIENT_NAMES[] = {"unknown", "face_up", "face_down", "o
 #define MOVING_DPS 30.0f
 #define MOVING_US (1000LL * 1000)
 #define FACE_DOWN_SLEEP_US (5LL * 1000 * 1000)   // face-down and still this long sleeps the screen
+// A short RAM-only history (lost on reboot) so Muse can answer "what has it
+// been doing?" and not only "what is it doing now?".
+typedef enum { EV_ORIENT, EV_SHAKE, EV_MOVE_START, EV_MOVE_STOP } event_type_t;
+typedef struct {
+    int64_t at_us;
+    uint8_t type;
+    uint8_t orient;
+} motion_event_t;
+#define EVENT_RING 48
+#define SHAKE_LOG_GAP_US (3LL * 1000 * 1000)
+static motion_event_t s_events[EVENT_RING];
+static int s_event_next;
+static int s_event_count;
+static uint32_t s_shake_total, s_move_samples;
+static bool s_moving_state;
+static int64_t s_boot_us;
+
+// Callers hold s_lock.
+static void log_event(event_type_t type, orient_t orient, int64_t now) {
+    s_events[s_event_next] = (motion_event_t){now, (uint8_t)type, (uint8_t)orient};
+    s_event_next = (s_event_next + 1) % EVENT_RING;
+    if (s_event_count < EVENT_RING) s_event_count++;
+}
+
 static orient_t s_orient = ORIENT_UNKNOWN;
 static int64_t s_orient_since_us;
 static int64_t s_last_motion_us;       // 0 = none yet
@@ -150,9 +174,22 @@ static void update_gestures(const float *v, int64_t now) {
     if (candidate_n >= ORIENT_HOLD_SAMPLES && candidate != s_orient) {
         s_orient = candidate;
         s_orient_since_us = now;
+        log_event(EV_ORIENT, candidate, now);
     }
-    if (moving) s_last_motion_us = now;
+    if (moving) {
+        s_last_motion_us = now;
+        s_move_samples++;
+        if (!s_moving_state) {
+            s_moving_state = true;
+            log_event(EV_MOVE_START, s_orient, now);
+        }
+    } else if (s_moving_state && now - s_last_motion_us >= MOVING_US) {
+        s_moving_state = false;
+        log_event(EV_MOVE_STOP, s_orient, s_last_motion_us);
+    }
     if (shook) {
+        if (!s_last_shake_us || now - s_last_shake_us >= SHAKE_LOG_GAP_US) log_event(EV_SHAKE, s_orient, now);
+        s_shake_total++;
         s_last_shake_us = now;
         memset(spikes, 0, sizeof(spikes));
     }
@@ -182,7 +219,12 @@ static void update_gestures(const float *v, int64_t now) {
 typedef struct {
     orient_t orient;
     int64_t orient_since_us, last_motion_us, last_shake_us;
+    uint32_t shake_total, move_samples;
+    int event_count;
+    motion_event_t events[EVENT_RING];   // oldest first
 } motion_t;
+
+static const char *const EVENT_NAMES[] = {"orientation_changed", "shaken", "started_moving", "stopped_moving"};
 
 static void add_motion(cJSON *payload, const motion_t *m, int64_t now_us) {
     cJSON *o = cJSON_AddObjectToObject(payload, "motion");
@@ -196,6 +238,20 @@ static void add_motion(cJSON *payload, const motion_t *m, int64_t now_us) {
         cJSON_AddNumberToObject(o, "last_shake_age_s", (double)((now_us - m->last_shake_us) / 1000000));
     } else {
         cJSON_AddNullToObject(o, "last_shake_age_s");
+    }
+    cJSON_AddNumberToObject(o, "uptime_s", (double)((now_us - s_boot_us) / 1000000));
+    cJSON_AddNumberToObject(o, "shakes_since_boot", m->shake_total);
+    cJSON_AddNumberToObject(o, "moving_seconds_since_boot", round(m->move_samples * POLL_MS / 1000.0));
+    // Newest first, each with its age, so the caller can place it in time.
+    cJSON *list = cJSON_AddArrayToObject(o, "recent_events");
+    for (int i = m->event_count - 1; list && i >= 0; i--) {
+        const motion_event_t *e = &m->events[i];
+        cJSON *item = cJSON_CreateObject();
+        if (!item) break;
+        cJSON_AddStringToObject(item, "event", EVENT_NAMES[e->type]);
+        if (e->type == EV_ORIENT) cJSON_AddStringToObject(item, "orientation", ORIENT_NAMES[e->orient]);
+        cJSON_AddNumberToObject(item, "age_s", (double)((now_us - e->at_us) / 1000000));
+        cJSON_AddItemToArray(list, item);
     }
 }
 
@@ -367,6 +423,7 @@ static void imu_task(void *arg) {
 }
 
 void atoms3r_imu_init(void) {
+    s_boot_us = esp_timer_get_time();
     if (xTaskCreate(imu_task, "imu", 3072, NULL, 2, NULL) != pdPASS) {
         ESP_LOGE(TAG, "failed to start the motion sensor task");
     }
@@ -376,7 +433,12 @@ cJSON *atoms3r_imu_command(void) {
     reading_t snapshot[SENSOR_COUNT];
     taskENTER_CRITICAL(&s_lock);
     memcpy(snapshot, s_readings, sizeof(snapshot));
-    motion_t motion = {s_orient, s_orient_since_us, s_last_motion_us, s_last_shake_us};
+    motion_t motion = {.orient = s_orient, .orient_since_us = s_orient_since_us,
+                       .last_motion_us = s_last_motion_us, .last_shake_us = s_last_shake_us,
+                       .shake_total = s_shake_total, .move_samples = s_move_samples,
+                       .event_count = s_event_count};
+    int first = (s_event_next - s_event_count + EVENT_RING) % EVENT_RING;
+    for (int i = 0; i < s_event_count; i++) motion.events[i] = s_events[(first + i) % EVENT_RING];
     taskEXIT_CRITICAL(&s_lock);
     return readings_result(snapshot, &motion, esp_timer_get_time());
 }
