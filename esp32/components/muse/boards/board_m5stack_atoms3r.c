@@ -85,7 +85,7 @@ static const char *TAG = "board";
 #define LCD_CS GPIO_NUM_14
 #define LCD_DC GPIO_NUM_42
 #define LCD_RST GPIO_NUM_48
-#define DRAW_BUF_LINES 32
+#define DRAW_BUF_LINES 16
 
 #define SYS_SDA GPIO_NUM_45
 #define SYS_SCL GPIO_NUM_0
