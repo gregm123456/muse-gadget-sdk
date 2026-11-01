@@ -58,6 +58,8 @@ void muse_ui_image_hide(void);
 /* From any task: ask the UI to drop a shown image on its next tick. A button
  * press does this; an image otherwise stays until replaced. */
 void muse_ui_image_dismiss(void);
+/* Whether a picture from display.draw_* is on screen (callable from any task). */
+bool muse_ui_image_shown(void);
 /* Watcher camera mode: shows an on-screen shutter hint over the live image. */
 void muse_ui_camera_hint(bool visible);
 

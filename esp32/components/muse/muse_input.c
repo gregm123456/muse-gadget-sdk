@@ -118,7 +118,6 @@ static void post(muse_ptt_t type, bool wake)
         ev.mark = mark;
         atomic_store(&s_call_pending, mark);   /* before the send, so the speaker button sees it */
     }
-    if (type == MUSE_PTT_DOWN && !wake) muse_ui_image_dismiss();
     ESP_LOGI(TAG, "PTT %s%s", type == MUSE_PTT_DOWN ? "down" : type == MUSE_PTT_UP ? "up" : "end call",
              wake ? " (waking)" : "");
     if (xQueueSend(s_queue, &ev, pdMS_TO_TICKS(20)) != pdTRUE) {

@@ -72,6 +72,7 @@
 #include "muse_menu.h"
 #include "muse_voice.h"
 #include "muse_mem.h"
+#include "muse_ui.h"
 
 static const char *TAG = "board";
 
@@ -393,6 +394,7 @@ static unsigned poll_buttons(void)
     }
     if (st == PRESSED && s_btn.pressed && now - t_edge >= pdMS_TO_TICKS(PTT_HOLD_MS)) {
         st = TALKING;
+        muse_ui_image_dismiss();
         out |= MUSE_BTN_TALK_PRESS;
     }
     if (release) {
@@ -403,7 +405,11 @@ static unsigned poll_buttons(void)
             out |= MUSE_BTN_AUX_PRESS | MUSE_BTN_AUX_RELEASE;
             st = IDLE;
         } else if (st == PRESSED) {
-            if (muse_menu_is_open()) {
+            if (muse_ui_image_shown()) {
+                /* A tap on a picture only clears it, so it can't end a call. */
+                muse_ui_image_dismiss();
+                st = IDLE;
+            } else if (muse_menu_is_open()) {
                 out |= MUSE_BTN_AUX_PRESS | MUSE_BTN_AUX_RELEASE;
                 st = IDLE;
             } else {

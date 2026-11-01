@@ -1706,10 +1706,10 @@ static void frame_tick(lv_timer_t *timer)
 
     if (mode != s_last_mode) {
         if (muse_voice_in_call()) s_level = 0;   /* do not smooth speaker energy into the mic meter */
-        /* A live call goes back to listening after every reply; that must not
-         * wipe a picture it just showed. A button press dismisses instead. */
+        /* A picture stays until the board's button handler dismisses it or a new
+         * one replaces it: calls return to listening after every reply, and
+         * a call can end while a picture is up. */
         if (mode == MUSE_MODE_LISTENING) {
-            if (!muse_voice_in_call()) image_hide_locked();
             muse_ui_show_face();
         }
         s_last_mode = mode;
@@ -1938,6 +1938,11 @@ bool muse_ui_image_draw(int x, int y, int w, int h, const uint16_t *pixels)
     }
     xSemaphoreGive(s_image_mutex);
     return true;
+}
+
+bool muse_ui_image_shown(void)
+{
+    return s_image_buf != NULL && !s_image_dismiss;
 }
 
 void muse_ui_image_dismiss(void)
