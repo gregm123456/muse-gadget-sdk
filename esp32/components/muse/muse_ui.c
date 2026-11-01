@@ -1064,6 +1064,8 @@ static void on_cover_event(lv_event_t *e)
 }
 
 /* With the display lock held. */
+static volatile bool s_image_dismiss;
+
 static void image_hide_locked(void)
 {
     xSemaphoreTake(s_image_mutex, portMAX_DELAY);
@@ -1693,6 +1695,10 @@ static void frame_tick(lv_timer_t *timer)
         send_snapshot();
     }
     (void)timer;
+    if (s_image_dismiss) {
+        s_image_dismiss = false;
+        image_hide_locked();
+    }
     image_sync();
     float mode_t;
     muse_mode_t mode = muse_state_mode(&mode_t);
@@ -1700,8 +1706,10 @@ static void frame_tick(lv_timer_t *timer)
 
     if (mode != s_last_mode) {
         if (muse_voice_in_call()) s_level = 0;   /* do not smooth speaker energy into the mic meter */
+        /* A live call goes back to listening after every reply; that must not
+         * wipe a picture it just showed. A button press dismisses instead. */
         if (mode == MUSE_MODE_LISTENING) {
-            image_hide_locked();
+            if (!muse_voice_in_call()) image_hide_locked();
             muse_ui_show_face();
         }
         s_last_mode = mode;
@@ -1930,6 +1938,11 @@ bool muse_ui_image_draw(int x, int y, int w, int h, const uint16_t *pixels)
     }
     xSemaphoreGive(s_image_mutex);
     return true;
+}
+
+void muse_ui_image_dismiss(void)
+{
+    s_image_dismiss = true;
 }
 
 void muse_ui_image_hide(void)
