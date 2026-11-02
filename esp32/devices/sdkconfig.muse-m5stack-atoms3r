@@ -43,5 +43,8 @@ CONFIG_ESP_WIFI_STATIC_TX_BUFFER_NUM=8
 # Tap = live call, hold = voice note, double tap = menu (Muse sends text only
 # to gadgets, so calls are the way to hear it).
 CONFIG_MUSE_REALTIME_VOICE=y
+# Maximum values allowed by Kconfig: 30 minutes idle, 2 hours per call.
+CONFIG_MUSE_REALTIME_VOICE_IDLE_S=1800
+CONFIG_MUSE_REALTIME_VOICE_MAX_S=7200
 # One-button menu.
 CONFIG_LV_FONT_MONTSERRAT_12=y
