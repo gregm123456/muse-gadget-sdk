@@ -103,6 +103,7 @@ static const char *const ORIENT_NAMES[] = {"unknown", "face_up", "face_down", "o
 #define SHAKE_SPIKE_DPS 400.0f
 #define SHAKE_SPIKES 4                 // spikes inside the window
 #define SHAKE_WINDOW_US (1000LL * 1000)
+#define SHAKE_HANGUP_US (2LL * 1000 * 1000)
 #define MOVING_G 0.15f
 #define MOVING_DPS 30.0f
 #define MOVING_US (1000LL * 1000)
@@ -196,10 +197,24 @@ static void update_gestures(const float *v, int64_t now) {
     taskEXIT_CRITICAL(&s_lock);
 #if CONFIG_HOMEHUB_ATOMS3R_GESTURES
     static bool slept_this_posture;
+    static int64_t hangup_shake_since_us, hangup_last_shake_us;
+    static bool hangup_requested;
     if (candidate_n >= ORIENT_HOLD_SAMPLES && candidate != ORIENT_FACE_DOWN) slept_this_posture = false;
-    if (shook && muse_voice_in_call()) {
-        ESP_LOGI(TAG, "shake: hanging up");
-        atoms3r_board_request_hangup();
+    if (!muse_voice_in_call()) {
+        hangup_shake_since_us = 0;
+        hangup_last_shake_us = 0;
+        hangup_requested = false;
+    } else if (shook && !hangup_requested) {
+        // Each detected shake must follow the previous one within the window.
+        if (!hangup_shake_since_us || now - hangup_last_shake_us > SHAKE_WINDOW_US) {
+            hangup_shake_since_us = now;
+        }
+        hangup_last_shake_us = now;
+        if (now - hangup_shake_since_us >= SHAKE_HANGUP_US) {
+            hangup_requested = true;
+            ESP_LOGI(TAG, "sustained shake: hanging up");
+            atoms3r_board_request_hangup();
+        }
     }
     // Once per time it is laid down, so waking it with a button while it
     // lies face-down isn't undone five seconds later.

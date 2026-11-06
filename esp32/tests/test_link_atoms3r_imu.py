@@ -13,13 +13,35 @@
 # limitations under the License.
 
 from pathlib import Path
+import os
 import re
+import shlex
+import subprocess
+import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 class AtomS3RImuTest(unittest.TestCase):
+    def test_sustained_shake_hangup(self):
+        source = (ROOT / "main/atoms3r_imu.c").read_text()
+        start = source.index("// Orientation and shake, derived from the samples.")
+        end = source.index("// sensors.read result:", start)
+        with tempfile.TemporaryDirectory() as temp:
+            out = Path(temp)
+            (out / "atoms3r_gestures.inc").write_text(source[start:end])
+            cmd = [
+                *shlex.split(os.environ.get("CC", "cc")), "-std=c11",
+                "-Wall", "-Wextra", "-Werror", "-I", str(out),
+                str(ROOT / "tests/link_atoms3r_gestures_harness.c"),
+                "-lm", "-o", str(out / "gestures"),
+            ]
+            compiled = subprocess.run(cmd, capture_output=True, text=True)
+            self.assertEqual(compiled.returncode, 0, compiled.stdout + compiled.stderr)
+            result = subprocess.run([str(out / "gestures")], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_command_is_advertised_and_dispatched_with_the_feature(self):
         noise = (ROOT / "main/noise_control.cpp").read_text()
         start = noise.index("#if CONFIG_HOMEHUB_ATOMS3R_IMU")

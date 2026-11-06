@@ -538,7 +538,8 @@ menu "ESP32 Device SDK"
         depends on HOMEHUB_ATOMS3R_IMU
         default y
         help
-            Shaking the device during a call hangs up. Lying face-down and
+            Shaking the device continuously for about 2 seconds during a call
+            hangs up. Lying face-down and
             still for a few seconds puts the screen to sleep (once per time
             it is laid down); a button press wakes it. Turn this off and the
             motion data is still reported by sensors.read.
