@@ -31,7 +31,7 @@
 #include "muse_voice.h"
 #endif
 
-static const char *TAG = "atoms3r_imu";
+static const char *TAG = "link.atoms3r_imu";
 
 #define BMI270_ADDR      0x68
 #define BMI270_CHIP_ID   0x24
