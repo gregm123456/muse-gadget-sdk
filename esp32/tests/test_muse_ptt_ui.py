@@ -155,6 +155,9 @@ class StopWatchPTT(unittest.TestCase):
         self.run_case('voice', 43, board=0, realtime=1)
         self.run_case('voice', 43, board=1, realtime=0)
 
+    def test_short_talk_button_tap_ends_single_button_ptt_call(self):
+        self.run_case('voice', 44, board=0, realtime=1)
+
     def test_interrupting_saved_note_preserves_release_into_call(self):
         self.run_case('voice', 0)
 

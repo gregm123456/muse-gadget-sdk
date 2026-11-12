@@ -40,6 +40,12 @@ static void overflow_input(muse_ptt_t type)
 static bool held, ready, ended_event, ready_event, hold_event, resume_event, ptt_mode;
 static bool fail_read, fail_accept, hold_status, reply_done, terminate_task;
 static bool need_end, sleep_state, input_context;
+#if CONFIG_MUSE_BOARD_M5STACK_STOPWATCH
+static const muse_board_t call_board = {.speaker_button="blue"};
+#else
+static const muse_board_t call_board = {0};
+#endif
+const muse_board_t *muse_board = &call_board;
 static int mic_at[128], speaker_at[128];
 static float level_at[128], level;
 static muse_voice_view_t views[128];
@@ -228,6 +234,8 @@ esp_err_t muse_audio_read(int16_t *p,size_t n) {
         if(scenario==28 && frame==4) push(MUSE_PTT_DOWN);
         if(scenario==28 && frame==6) push(MUSE_PTT_UP);
     }
+    if(scenario==44 && frame==3) push(MUSE_PTT_DOWN);
+    if(scenario==44 && frame==4) push(MUSE_PTT_UP);
     if(scenario>=30 && scenario<=32 && frame==2) {
         overflow_input(scenario==30?MUSE_PTT_UP:scenario==31?MUSE_PTT_END_CALL:MUSE_PTT_DOWN);
     }
@@ -281,6 +289,12 @@ int main(int argc,char **argv) {
         return 0;
     }
 #if CONFIG_MUSE_REALTIME_VOICE
+    if (scenario==44) {
+        ptt_mode=true;
+        run_call(true,0);
+        assert(ends==1 && !muse_voice_in_call() && !held);
+        return 0;
+    }
     if(scenario==41) {
         run_call(true,0);
         assert(tail_reads==150 && ended_event && !ends && !held && !muse_voice_in_call());

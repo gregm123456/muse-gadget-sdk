@@ -1188,8 +1188,8 @@ static void build_sound_page(lv_obj_t *tile)
     s_sound = page(tile, "SOUND", true, &list);
 #if CONFIG_MUSE_REALTIME_VOICE
     s_ptt_sw = switch_row(list, "Push-to-talk", muse_settings_voice_ptt(), on_ptt_sw);
-    note(list, "On: hold the talk button to speak during a call. Off: hands-free calls; "
-               "hold outside a call to send a voice note.");
+    note(list, "On: hold to talk in a call; tap to end on single-button devices. "
+               "Off: hands-free calls; hold outside a call to send a voice note.");
 #endif
     if (muse_board->audio_init) {
         s_spk_sw = switch_row(list, "Speaker", muse_settings_speaker_on(), on_speaker_sw);

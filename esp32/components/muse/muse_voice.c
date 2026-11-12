@@ -902,12 +902,13 @@ static bool can_record(void)
 #define CALL_TAIL_US 300000
 #define CALL_END_WAIT_US (20LL * 1000000)   /* hung up: wait this long for the call to wind down */
 #define CALL_RELEASE_US 120000            /* bounded capture lag, as for voice notes */
+#define PTT_TAP_US 300000                 /* a short talk-button press ends a single-button PTT call */
 
 typedef struct {
     bool ptt, held, live, hung_up, server_hold, awaiting;
     unsigned press;
     uint32_t input_epoch;
-    int64_t give_up, release_until;
+    int64_t give_up, press_started_us, release_until;
     size_t release_frames;
     muse_vc_gate_t gate;
 } call_ui_t;
@@ -938,6 +939,7 @@ static void call_input(call_ui_t *c)
         } else if (c->ptt && ev.type == MUSE_PTT_DOWN) {
             finish_release(c);   /* old press closes before the new one opens */
             ++c->press;
+            c->press_started_us = esp_timer_get_time();
             c->held = true;
             muse_voice_call_set_talking(true);
             muse_vc_gate_init(&c->gate, false, 0);
@@ -945,6 +947,12 @@ static void call_input(call_ui_t *c)
         } else if (c->ptt && ev.type == MUSE_PTT_UP && c->held) {
             c->held = false;
             muse_state_set_level(0);
+            if (c->press && !muse_board->speaker_button &&
+                esp_timer_get_time() - c->press_started_us < PTT_TAP_US) {
+                c->hung_up = true;
+                muse_voice_call_set_talking(false);
+                continue;
+            }
             call_view(c->live ? MUSE_VOICE_VIEW_THINKING : MUSE_VOICE_VIEW_CONNECTING);
             if (c->server_hold) {
                 muse_voice_call_set_talking(false);
