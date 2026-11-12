@@ -310,9 +310,9 @@ menu "Muse"
         help
             A tap on the talk button starts a live voice call with Muse over
             the voice session; the next press hangs up. Holding the button
-            still sends a voice note. On the StopWatch, holding yellow talks
-            in a call instead, blue hangs up, and voice notes are a Sound
-            setting. The mic is shut while Muse is talking
+            still sends a voice note. Push-to-talk is a Sound setting: while
+            enabled, hold the talk button to speak in a call; disabled calls
+            are hands-free. The mic is shut while Muse is talking
             unless the board's audio chip confirms echo cancellation (the
             Home Assistant Voice PE's XMOS), so you take turns. The call
             also ends when Muse ends it, when nothing has been said or

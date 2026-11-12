@@ -89,8 +89,8 @@ bool muse_voice_in_call(void) { return muse_voice_call_view() != MUSE_VOICE_VIEW
 bool muse_voice_ptt_call(void) { return muse_voice_in_call() && atomic_load(&s_ptt_call); }
 bool muse_voice_ptt_enabled(void)
 {
-#if CONFIG_MUSE_BOARD_M5STACK_STOPWATCH && CONFIG_MUSE_REALTIME_VOICE
-    return !muse_settings_voice_notes();
+#if CONFIG_MUSE_REALTIME_VOICE
+    return muse_settings_voice_ptt();
 #else
     return false;
 #endif

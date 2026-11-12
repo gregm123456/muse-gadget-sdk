@@ -37,7 +37,7 @@ static void overflow_input(muse_ptt_t type)
     post(type,false);
     assert(queue.n==16 && muse_input_call_epoch()==1);
 }
-static bool held, ready, ended_event, ready_event, hold_event, resume_event, notes_mode;
+static bool held, ready, ended_event, ready_event, hold_event, resume_event, ptt_mode;
 static bool fail_read, fail_accept, hold_status, reply_done, terminate_task;
 static bool need_end, sleep_state, input_context;
 static int mic_at[128], speaker_at[128];
@@ -103,7 +103,7 @@ void muse_state_make_happy(void) {}
 bool muse_state_asleep(void) { return sleep_state; }
 bool muse_state_on_battery(void) { return false; }
 void muse_state_wait_awake(uint32_t ms) { vTaskDelay(ms); }
-bool muse_settings_voice_notes(void) { return notes_mode; }
+bool muse_settings_voice_ptt(void) { return ptt_mode; }
 int muse_settings_volume(void) { return 20; }
 int muse_settings_mic_gain(void) { return 30; }
 bool muse_wifi_connected(void) { return ready; }
@@ -235,7 +235,7 @@ esp_err_t muse_audio_read(int16_t *p,size_t n) {
     if (scenario==1) {
         if(frame==3 || frame==10) push(MUSE_PTT_UP);
         if(frame==8) push(MUSE_PTT_DOWN);
-        if(frame==9) notes_mode=true; /* changing the setting cannot end/change the call */
+        if(frame==9) ptt_mode=!ptt_mode; /* changing the setting cannot end/change the call */
         if(frame==11) push(MUSE_PTT_DOWN);
         if(frame==13) fail_read=true;
         if(frame==14) { fail_read=false; fail_accept=true; }
@@ -264,13 +264,20 @@ esp_err_t muse_audio_write(const int16_t *p,size_t n) {
 
 int main(int argc,char **argv) {
     assert(argc==2); scenario=atoi(argv[1]); s_queue=input_queue=&queue; ready=true;
+    ptt_mode=CONFIG_MUSE_BOARD_M5STACK_STOPWATCH && CONFIG_MUSE_REALTIME_VOICE;
     s_pre=calloc(PRE_CHUNKS,sizeof(*s_pre));
     if (scenario>=20 && scenario<=21) {
-        notes_mode=scenario==21; terminate_task=true; push(MUSE_PTT_DOWN); push(MUSE_PTT_UP);
+        if(scenario==21) ptt_mode=false;
+        terminate_task=true; push(MUSE_PTT_DOWN); push(MUSE_PTT_UP);
         int outcome=setjmp(finish);
         if (!outcome) voice_task(NULL);
-        bool ptt=CONFIG_MUSE_BOARD_M5STACK_STOPWATCH && CONFIG_MUSE_REALTIME_VOICE && !notes_mode;
+        bool ptt=CONFIG_MUSE_REALTIME_VOICE && ptt_mode;
         assert(ptt ? (outcome==1 && starts==1 && notes==0 && allocations==0) : (outcome==2 && notes==1));
+        return 0;
+    }
+    if (scenario==43) {
+        ptt_mode=true;
+        assert(muse_voice_ptt_enabled()==(bool)CONFIG_MUSE_REALTIME_VOICE);
         return 0;
     }
 #if CONFIG_MUSE_REALTIME_VOICE
@@ -284,7 +291,7 @@ int main(int argc,char **argv) {
         /* The input task marks a push-to-talk press pending (blue then ends
          * the call it starts). A waking tap clears the mark, unless another
          * press is queued behind it. */
-        bool ptt=CONFIG_MUSE_BOARD_M5STACK_STOPWATCH && !notes_mode;
+        bool ptt=CONFIG_MUSE_REALTIME_VOICE && ptt_mode;
         post(MUSE_PTT_DOWN,true); push(MUSE_PTT_UP);
         if(scenario==36) post(MUSE_PTT_DOWN,false);
         assert((atomic_load(&s_call_pending)!=0)==ptt);
@@ -298,7 +305,7 @@ int main(int argc,char **argv) {
         /* L4: the voice task goes to rest; once it has found the queue empty,
          * the input task posts a talk press (mark set, then sent). The press
          * keeps its mark, so blue hangs up its call rather than muting. */
-        bool ptt=CONFIG_MUSE_BOARD_M5STACK_STOPWATCH && !notes_mode;
+        bool ptt=CONFIG_MUSE_REALTIME_VOICE && ptt_mode;
         post(MUSE_PTT_DOWN,false);            /* an older press, dropped by the rest */
         inject_armed=true;
         set_resting(true);
@@ -310,7 +317,7 @@ int main(int argc,char **argv) {
     if (scenario==39) {
         /* The same race at a waking tap: a press posted once the voice task
          * has seen the tap's release keeps its mark, and starts its call. */
-        bool ptt=CONFIG_MUSE_BOARD_M5STACK_STOPWATCH && !notes_mode;
+        bool ptt=CONFIG_MUSE_REALTIME_VOICE && ptt_mode;
         post(MUSE_PTT_DOWN,true); push(MUSE_PTT_UP);
         inject_armed=true;   /* the first empty queue after the release */
         terminate_task=true;
@@ -322,7 +329,7 @@ int main(int argc,char **argv) {
     if (scenario==40) {
         /* A press taken up inside a call (a new hold) doesn't leave a mark
          * behind for after the call. */
-        bool ptt=CONFIG_MUSE_BOARD_M5STACK_STOPWATCH && !notes_mode;
+        bool ptt=CONFIG_MUSE_REALTIME_VOICE && ptt_mode;
         post(MUSE_PTT_DOWN,false); push(MUSE_PTT_UP);
         post(MUSE_PTT_DOWN,false);   /* marked: posted before the call shows */
         terminate_task=true;
@@ -333,7 +340,7 @@ int main(int argc,char **argv) {
     if (scenario==37) {
         /* Going to rest drops presses from before sleeping, and their mark,
          * but not a press that just woke Muse. */
-        bool ptt=CONFIG_MUSE_BOARD_M5STACK_STOPWATCH && !notes_mode;
+        bool ptt=CONFIG_MUSE_REALTIME_VOICE && ptt_mode;
         post(MUSE_PTT_DOWN,false); assert((atomic_load(&s_call_pending)!=0)==ptt);
         set_resting(true); assert(!queue.n && !(atomic_load(&s_call_pending)!=0));
         set_resting(false);
