@@ -151,6 +151,13 @@ class StopWatchPTT(unittest.TestCase):
     def test_default_ptt_bypasses_entire_note_path(self):
         self.run_case('voice', 20)
 
+    def test_explicit_ptt_setting_enables_other_realtime_boards(self):
+        self.run_case('voice', 43, board=0, realtime=1)
+        self.run_case('voice', 43, board=1, realtime=0)
+
+    def test_short_talk_button_tap_ends_single_button_ptt_call(self):
+        self.run_case('voice', 44, board=0, realtime=1)
+
     def test_interrupting_saved_note_preserves_release_into_call(self):
         self.run_case('voice', 0)
 
@@ -168,6 +175,9 @@ class StopWatchPTT(unittest.TestCase):
 
     def test_held_call_press_does_not_leave_a_pending_call(self):
         self.run_case('input', 10)
+
+    def test_selected_ptt_mode_marks_call_start_on_other_realtime_boards(self):
+        self.run_case('input', 15, board=0, realtime=1)
 
     def test_consumer_plays_three_seconds_before_delayed_stop_ended_event(self):
         self.run_case('voice', 41)
