@@ -395,9 +395,12 @@ bootloader.
 
 The M5Stack AtomS3R with the Atomic Voice Base runs the full UI on the
 ESP32-S3-PICO-1-N8R8 (8 MB flash, 8 MB octal PSRAM). The 0.85" ST7735S screen
-is also the one push button (GPIO 41): hold it to send a voice note, tap to
-start or end a live call, double-tap to open the menu (with the menu open, a
-tap steps down and a hold selects). The mic and speaker are the base's ES8311,
+is also the one push button (GPIO 41): tap to start or end a live call,
+double-tap to open the menu (with the menu open, a tap steps down and a hold
+selects). The menu's Push-to-talk setting switches between hands-free calls
+(the default, with hold for a voice note outside a call) and holding the screen
+to talk during a call. The setting persists across restarts. The mic and
+speaker are the base's ES8311,
 clocked from BCLK; its amp is enabled through a PI4IOE5V6408. USB powered only:
 GPIO 41 isn't an RTC pin, so there's no deep-sleep wake and no software power
 off. Muse reads the BMI270 (accelerometer, gyroscope, die temperature) with

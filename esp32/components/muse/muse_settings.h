@@ -46,7 +46,7 @@ typedef enum {
     MUSE_SETTING_WIFI,          /* on/off or credentials */
     MUSE_SETTING_BLE,
     MUSE_SETTING_HATCH,
-    MUSE_SETTING_VOICE_NOTES,
+    MUSE_SETTING_VOICE_PTT,
 } muse_setting_t;
 
 typedef void (*muse_setting_cb_t)(muse_setting_t what);
@@ -64,9 +64,8 @@ enum { MUSE_TEXT_SMALL, MUSE_TEXT_MEDIUM, MUSE_TEXT_LARGE };
 int muse_settings_text_size(void);
 bool muse_settings_wifi_on(void);
 bool muse_settings_ble_on(void);
-/* StopWatch: false selects realtime PTT; true selects voice notes only. */
-bool muse_settings_voice_notes(void);
-void muse_settings_set_voice_notes(bool on);
+bool muse_settings_voice_ptt(void);
+void muse_settings_set_voice_ptt(bool on);
 
 void muse_settings_wifi(char ssid[MUSE_SSID_MAX + 1], char pass[MUSE_PASS_MAX + 1]);
 void muse_settings_hatch_host(char out[MUSE_HOST_MAX + 1]);

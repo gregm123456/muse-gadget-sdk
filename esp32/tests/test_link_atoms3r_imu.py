@@ -24,6 +24,49 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class AtomS3RImuTest(unittest.TestCase):
+    def test_one_button_menu_can_toggle_ptt(self):
+        menu = (ROOT / "components/muse/muse_menu.c").read_text()
+        header = (ROOT / "components/muse/muse_menu.h").read_text()
+        items = re.search(r"typedef enum \{.*?\} item_t;", menu, re.S)[0]
+        views = re.search(r"typedef enum \{\s*VIEW_CLOSED.*?\} view_t;", menu, re.S)[0]
+        keys = re.search(r"typedef enum \{.*?\} muse_menu_key_t;", header, re.S)[0]
+        names = menu[menu.index("static const char *const ITEM_NAMES"):menu.index("/* What the talk button")]
+        actions = menu[menu.index("static void activate("):menu.index("void muse_menu_key(")]
+        with tempfile.TemporaryDirectory() as temp:
+            out = Path(temp)
+            (out / "atoms3r_menu_types.h").write_text("\n".join((items, views, keys)))
+            (out / "atoms3r_menu.inc").write_text(names + actions)
+            cmd = [
+                *shlex.split(os.environ.get("CC", "cc")), "-std=c11",
+                "-Wall", "-Wextra", "-Werror", "-I", str(out),
+                str(ROOT / "tests/atoms3r_menu_harness.c"), "-o", str(out / "menu"),
+            ]
+            compiled = subprocess.run(cmd, capture_output=True, text=True)
+            self.assertEqual(compiled.returncode, 0, compiled.stdout + compiled.stderr)
+            result = subprocess.run([str(out / "menu")], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_screen_button_distinguishes_ptt_holds_from_taps(self):
+        board = (ROOT / "components/muse/boards/board_m5stack_atoms3r.c").read_text()
+        header = (ROOT / "components/muse/muse_board.h").read_text()
+        start = board.index("static unsigned poll_buttons(void)")
+        end = board.index("static void wait_buttons(", start)
+        definitions = re.findall(r"^#define (?:PTT_HOLD_MS|DOUBLE_TAP_MS|TAP_PULSE_MS)\s+\d+", board, re.M)
+        definitions += re.findall(r"^#define MUSE_BTN_(?:TALK_PRESS|TALK_RELEASE|AUX_PRESS|AUX_RELEASE|CALL_END|CALL_START)\s+.*", header, re.M)
+        with tempfile.TemporaryDirectory() as temp:
+            out = Path(temp)
+            (out / "atoms3r_button.inc").write_text(board[start:end])
+            (out / "atoms3r_button_defines.h").write_text("\n".join(definitions) + "\n")
+            cmd = [
+                *shlex.split(os.environ.get("CC", "cc")), "-std=c11",
+                "-Wall", "-Wextra", "-Werror", "-I", str(out),
+                str(ROOT / "tests/atoms3r_button_harness.c"), "-o", str(out / "button"),
+            ]
+            compiled = subprocess.run(cmd, capture_output=True, text=True)
+            self.assertEqual(compiled.returncode, 0, compiled.stdout + compiled.stderr)
+            result = subprocess.run([str(out / "button")], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_sustained_shake_hangup(self):
         source = (ROOT / "main/atoms3r_imu.c").read_text()
         start = source.index("// Orientation and shake, derived from the samples.")

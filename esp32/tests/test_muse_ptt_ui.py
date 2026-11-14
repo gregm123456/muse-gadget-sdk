@@ -19,6 +19,7 @@ import re
 import shlex
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -38,8 +39,8 @@ class StopWatchPTT(unittest.TestCase):
         cls.tmp = tempfile.TemporaryDirectory()
         cls.addClassCleanup(cls.tmp.cleanup)
         cls.binaries = {}
-        for board, realtime in ((1, 1), (0, 1), (1, 0)):
-            stage = Path(cls.tmp.name) / f'{board}-{realtime}'
+        for board, realtime, atoms3r in ((1, 1, 0), (0, 1, 0), (1, 0, 0), (0, 1, 1)):
+            stage = Path(cls.tmp.name) / f'{board}-{realtime}-{atoms3r}'
             stage.mkdir()
             # Byte-identical production units/headers. No function extraction or
             # source-string assertions: the same control flow as firmware runs.
@@ -59,9 +60,10 @@ class StopWatchPTT(unittest.TestCase):
                 path.write_text('#include "muse_ptt_ui_fakes.h"\n')
             (stage / 'sdkconfig.h').write_text(
                 '#pragma once\n'
-                f'#define CONFIG_MUSE_BOARD_M5STACK_STOPWATCH {board}\n'
-                f'#define CONFIG_MUSE_REALTIME_VOICE {realtime}\n'
-                '#define CONFIG_MUSE_HATCH 1\n#define CONFIG_SPIRAM 1\n'
+                + ('#define CONFIG_MUSE_BOARD_M5STACK_STOPWATCH 1\n' if board else '')
+                + ('#define CONFIG_MUSE_REALTIME_VOICE 1\n' if realtime else '')
+                + ('#define CONFIG_MUSE_BOARD_M5STACK_ATOMS3R 1\n' if atoms3r else '')
+                + '#define CONFIG_MUSE_HATCH 1\n#define CONFIG_SPIRAM 1\n'
                 '#define CONFIG_MUSE_DEFAULT_VOLUME 20\n')
             ui = (MUSE / 'muse_ui.c').read_text()
             start = ui.index('static void frame_tick(')
@@ -77,19 +79,21 @@ class StopWatchPTT(unittest.TestCase):
                 command = [*shlex.split(os.environ.get('CC', 'cc')), '-std=gnu11',
                            '-Wall', '-Wextra', '-Werror', '-Wno-unused-parameter',
                            '-Wno-unused-variable', '-Wno-unused-function',
-                           '-ffunction-sections', '-fdata-sections', '-Wl,--gc-sections',
+                           '-ffunction-sections', '-fdata-sections',
                            '-g', '-O1', '-fsanitize=address,undefined', '-fno-omit-frame-pointer',
-                           '-no-pie', '-include', str(ROOT / 'tests/host_compat.h'),
+                           '-include', str(ROOT / 'tests/host_compat.h'),
                            '-I', str(stage), str(source)]
+                command.extend(['-Wl,-dead_strip'] if sys.platform == 'darwin'
+                               else ['-Wl,--gc-sections', '-no-pie'])
                 if kind == 'voice' and realtime:
                     command.append(str(MUSE / 'muse_voice_call_core.c'))
                 result = subprocess.run([*command, '-lm', '-o', str(out)], capture_output=True, text=True)
                 if result.returncode:
                     raise AssertionError(result.stdout + result.stderr)
-                cls.binaries[kind, board, realtime] = out
+                cls.binaries[kind, board, realtime, atoms3r] = out
 
-    def run_case(self, kind, scenario, board=1, realtime=1):
-        result = subprocess.run([str(self.binaries[kind, board, realtime]), str(scenario)],
+    def run_case(self, kind, scenario, board=1, realtime=1, atoms3r=0):
+        result = subprocess.run([str(self.binaries[kind, board, realtime, atoms3r]), str(scenario)],
                                 capture_output=True, text=True, timeout=10,
                                 env={**os.environ, 'ASAN_OPTIONS': 'detect_leaks=0:abort_on_error=1',
                                      'UBSAN_OPTIONS': 'halt_on_error=1:print_stacktrace=1'})
@@ -151,6 +155,13 @@ class StopWatchPTT(unittest.TestCase):
     def test_default_ptt_bypasses_entire_note_path(self):
         self.run_case('voice', 20)
 
+    def test_explicit_ptt_setting_enables_other_realtime_boards(self):
+        self.run_case('voice', 43, board=0, realtime=1)
+        self.run_case('voice', 43, board=1, realtime=0)
+
+    def test_short_talk_button_tap_ends_single_button_ptt_call(self):
+        self.run_case('voice', 44, board=0, realtime=1)
+
     def test_interrupting_saved_note_preserves_release_into_call(self):
         self.run_case('voice', 0)
 
@@ -169,6 +180,19 @@ class StopWatchPTT(unittest.TestCase):
     def test_held_call_press_does_not_leave_a_pending_call(self):
         self.run_case('input', 10)
 
+    def test_selected_ptt_mode_marks_call_start_on_other_realtime_boards(self):
+        self.run_case('input', 17, board=0, realtime=1)
+
+    def test_explicit_atom_call_end_and_short_hold(self):
+        self.run_case('input', 18, board=0, atoms3r=1)
+        self.run_case('voice', 45, board=0, atoms3r=1)
+
+    def test_atom_tap_starts_muted_until_a_real_hold(self):
+        self.run_case('input', 19, board=0, atoms3r=1)
+        self.run_case('voice', 46, board=0, atoms3r=1)
+        self.run_case('voice', 47, board=0, atoms3r=1)
+        self.run_case('voice', 48, board=0, atoms3r=1)
+
     def test_consumer_plays_three_seconds_before_delayed_stop_ended_event(self):
         self.run_case('voice', 41)
 
@@ -185,6 +209,7 @@ class StopWatchPTT(unittest.TestCase):
     def test_note_mode_persists_without_changing_other_board_defaults(self):
         for board, realtime in ((1, 1), (0, 1), (1, 0)):
             self.run_case('settings', 1, board=board, realtime=realtime)
+        self.run_case('settings', 1, board=0, atoms3r=1)
 
     def test_legacy_aux_sleep_wake_double_and_long_press(self):
         for scenario in (1, 2, 3):

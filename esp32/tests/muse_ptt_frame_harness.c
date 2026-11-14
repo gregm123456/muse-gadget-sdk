@@ -19,7 +19,7 @@
 #include "muse_pixel.h"
 
 typedef void lv_timer_t;
-static bool s_snapshot;
+static bool s_snapshot, s_image_dismiss;
 static float s_level;
 static muse_mode_t s_last_mode=MUSE_MODE_COUNT, mode;
 static muse_mode_t s_last_epaper_pose=MUSE_MODE_COUNT;

@@ -68,6 +68,9 @@ static const char *TAG = "muse_menu";
 typedef enum {
     ITEM_VOLUME,
     ITEM_SPEAKER,
+#if CONFIG_MUSE_BOARD_M5STACK_ATOMS3R && CONFIG_MUSE_REALTIME_VOICE
+    ITEM_PTT,
+#endif
     ITEM_BRIGHTNESS,
     ITEM_MIC,
     ITEM_SLEEP,
@@ -91,6 +94,9 @@ typedef enum {
 static const char *const ITEM_NAMES[ITEM_COUNT] = {
     [ITEM_VOLUME] = "Volume",
     [ITEM_SPEAKER] = "Speaker",
+#if CONFIG_MUSE_BOARD_M5STACK_ATOMS3R && CONFIG_MUSE_REALTIME_VOICE
+    [ITEM_PTT] = "Push-to-talk",
+#endif
     [ITEM_BRIGHTNESS] = "Brightness",
     [ITEM_MIC] = "Mic gain",
     [ITEM_SLEEP] = "Auto-sleep",
@@ -114,6 +120,9 @@ static const char *const ITEM_NAMES[ITEM_COUNT] = {
 static const char *const ITEM_ACTIONS[ITEM_COUNT] = {
     [ITEM_VOLUME] = "Change",
     [ITEM_SPEAKER] = "Toggle",
+#if CONFIG_MUSE_BOARD_M5STACK_ATOMS3R && CONFIG_MUSE_REALTIME_VOICE
+    [ITEM_PTT] = "Toggle",
+#endif
     [ITEM_BRIGHTNESS] = "Change",
     [ITEM_MIC] = "Change",
     [ITEM_SLEEP] = "Change",
@@ -275,6 +284,11 @@ static void value_text(int item, char *buf, size_t n)
     case ITEM_SPEAKER:
         strlcpy(buf, muse_settings_speaker_on() ? "On" : "Off", n);
         break;
+#if CONFIG_MUSE_BOARD_M5STACK_ATOMS3R && CONFIG_MUSE_REALTIME_VOICE
+    case ITEM_PTT:
+        strlcpy(buf, muse_settings_voice_ptt() ? "On" : "Off", n);
+        break;
+#endif
     case ITEM_BRIGHTNESS:
         snprintf(buf, n, "%d%%", muse_settings_brightness());
         break;
@@ -484,6 +498,11 @@ static void activate(int item, int direction)
     case ITEM_SPEAKER:
         muse_settings_set_speaker_on(!muse_settings_speaker_on());
         break;
+#if CONFIG_MUSE_BOARD_M5STACK_ATOMS3R && CONFIG_MUSE_REALTIME_VOICE
+    case ITEM_PTT:
+        muse_settings_set_voice_ptt(!muse_settings_voice_ptt());
+        break;
+#endif
     case ITEM_BRIGHTNESS:
         muse_settings_set_brightness(value_step(BRIGHT_STEPS, COUNT(BRIGHT_STEPS), muse_settings_brightness(), direction));
         break;

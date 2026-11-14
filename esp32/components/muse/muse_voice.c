@@ -75,6 +75,7 @@ static const char *TAG = "muse_voice";
 static QueueHandle_t s_queue;
 static uint32_t s_press_input_epoch;
 static uint32_t s_press_mark;   /* the press's pending-call mark (muse_input_clear_call_pending) */
+static bool s_press_tap_start;
 static volatile bool s_monitor;
 static volatile float s_monitor_db = -100.0f;
 static volatile bool s_chirp;
@@ -89,8 +90,8 @@ bool muse_voice_in_call(void) { return muse_voice_call_view() != MUSE_VOICE_VIEW
 bool muse_voice_ptt_call(void) { return muse_voice_in_call() && atomic_load(&s_ptt_call); }
 bool muse_voice_ptt_enabled(void)
 {
-#if CONFIG_MUSE_BOARD_M5STACK_STOPWATCH && CONFIG_MUSE_REALTIME_VOICE
-    return !muse_settings_voice_notes();
+#if CONFIG_MUSE_REALTIME_VOICE
+    return muse_settings_voice_ptt();
 #else
     return false;
 #endif
@@ -240,10 +241,12 @@ static bool got_event(muse_ptt_t type)
     muse_input_event_t ev;
     while (xQueueReceive(s_queue, &ev, 0) == pdTRUE) {
         muse_state_poke();
-        if (ev.epoch == muse_input_call_epoch() && ev.type == type) {
+        if (ev.epoch == muse_input_call_epoch() &&
+            (ev.type == type || (type == MUSE_PTT_DOWN && ev.type == MUSE_PTT_START_CALL))) {
             if (type == MUSE_PTT_DOWN) {
                 s_press_input_epoch = ev.epoch;
                 s_press_mark = ev.mark;
+                s_press_tap_start = ev.type == MUSE_PTT_START_CALL;
             }
             return true;
         }
@@ -618,7 +621,9 @@ static bool ptt_held_on_waking(void)
         }
         if (xQueuePeek(s_queue, &ev, 0) == pdTRUE) {
             s_pre_fill = 0;
-            if (ev.type != MUSE_PTT_DOWN) xQueueReceive(s_queue, &ev, 0);
+            if (ev.type != MUSE_PTT_DOWN && ev.type != MUSE_PTT_START_CALL) {
+                xQueueReceive(s_queue, &ev, 0);
+            }
             return false;
         }
         if (esp_timer_get_time() >= until) return true;
@@ -642,7 +647,7 @@ static bool press_waiting(void)
 {
     muse_input_event_t ev;
     while (xQueuePeek(s_queue, &ev, 0) == pdTRUE) {
-        if (ev.type == MUSE_PTT_DOWN) {
+        if (ev.type == MUSE_PTT_DOWN || ev.type == MUSE_PTT_START_CALL) {
             return true;
         }
         xQueueReceive(s_queue, &ev, 0);
@@ -927,12 +932,13 @@ static bool can_record(void)
 #define CALL_TAIL_US 300000
 #define CALL_END_WAIT_US (20LL * 1000000)   /* hung up: wait this long for the call to wind down */
 #define CALL_RELEASE_US 120000            /* bounded capture lag, as for voice notes */
+#define PTT_TAP_US 300000                 /* a short talk-button press ends a single-button PTT call */
 
 typedef struct {
     bool ptt, held, live, hung_up, server_hold, awaiting;
     unsigned press;
     uint32_t input_epoch;
-    int64_t give_up, release_until;
+    int64_t give_up, press_started_us, release_until;
     size_t release_frames;
     muse_vc_gate_t gate;
 } call_ui_t;
@@ -963,6 +969,7 @@ static void call_input(call_ui_t *c)
         } else if (c->ptt && ev.type == MUSE_PTT_DOWN) {
             finish_release(c);   /* old press closes before the new one opens */
             ++c->press;
+            c->press_started_us = esp_timer_get_time();
             c->held = true;
             muse_voice_call_set_talking(true);
             muse_vc_gate_init(&c->gate, false, 0);
@@ -970,6 +977,14 @@ static void call_input(call_ui_t *c)
         } else if (c->ptt && ev.type == MUSE_PTT_UP && c->held) {
             c->held = false;
             muse_state_set_level(0);
+#if !CONFIG_MUSE_BOARD_M5STACK_ATOMS3R
+            if (c->press && !muse_board->speaker_button &&
+                esp_timer_get_time() - c->press_started_us < PTT_TAP_US) {
+                c->hung_up = true;
+                muse_voice_call_set_talking(false);
+                continue;
+            }
+#endif
             call_view(c->live ? MUSE_VOICE_VIEW_THINKING : MUSE_VOICE_VIEW_CONNECTING);
             if (c->server_hold) {
                 muse_voice_call_set_talking(false);
@@ -1005,12 +1020,12 @@ static void call_view(muse_voice_view_t view)
 /* One read/write per pass paces the shared duplex bus. PTT admits the held
  * interval plus a bounded capture-lag tail; never idle pre-roll or a block
  * crossing into a different press. */
-static void run_call(bool ptt, size_t waking_chunks)
+static void run_call_started(bool ptt, size_t waking_chunks, bool start_held)
 {
     static int16_t out[MUSE_AUDIO_CHUNK];
     static const int16_t silence[MUSE_AUDIO_CHUNK];
     char text[96] = "";
-    call_ui_t c = { .ptt = ptt, .held = ptt, .input_epoch = s_press_input_epoch };
+    call_ui_t c = { .ptt = ptt, .held = ptt && start_held, .input_epoch = s_press_input_epoch };
     muse_vc_gate_init(&c.gate, false, ptt ? 0 : CALL_TAIL_US);
     bool ended = false;
     atomic_store(&s_ptt_call, ptt);
@@ -1027,6 +1042,7 @@ static void run_call(bool ptt, size_t waking_chunks)
     muse_state_set_caption("CONNECTING TO MUSE...");
     if (ptt) {
         muse_voice_call_start_ptt();
+        if (!start_held) muse_voice_call_set_talking(false);
         /* These were captured while this waking press was held. Enqueue
          * them before UP, so release drains them like other captured input. */
         for (size_t i = 0; i < waking_chunks && !atomic_load(&s_shutdown) &&
@@ -1047,7 +1063,13 @@ static void run_call(bool ptt, size_t waking_chunks)
             switch (ev) {
             case MUSE_VOICE_CALL_EV_READY:
                 c.live = true;
-                muse_state_set_caption(ptt ? "HOLD YELLOW TO TALK" : "IN A CALL - PRESS TO HANG UP");
+                muse_state_set_caption(ptt ?
+#if CONFIG_MUSE_BOARD_M5STACK_ATOMS3R
+                                       "HOLD SCREEN TO TALK" :
+#else
+                                       "HOLD YELLOW TO TALK" :
+#endif
+                                       "IN A CALL - PRESS TO HANG UP");
                 break;
             case MUSE_VOICE_CALL_EV_HEARD:
                 muse_state_set_caption("\"%s\"", text);
@@ -1116,7 +1138,11 @@ static void run_call(bool ptt, size_t waking_chunks)
             c.release_until || c.awaiting || status.sending ? MUSE_VOICE_VIEW_THINKING :
             status.working ? MUSE_VOICE_VIEW_WORKING : MUSE_VOICE_VIEW_READY;
         if (ptt && view == MUSE_VOICE_VIEW_READY && muse_voice_call_view() != view) {
+#if CONFIG_MUSE_BOARD_M5STACK_ATOMS3R
+            muse_state_set_caption("HOLD SCREEN TO TALK");
+#else
             muse_state_set_caption("HOLD YELLOW TO TALK");
+#endif
         }
         /* level also animates the mouth; only LISTENING displays the meter.
          * Clear before changing modes so speaker level cannot cross into it. */
@@ -1158,6 +1184,11 @@ static void run_call(bool ptt, size_t waking_chunks)
     atomic_store(&s_call_view, MUSE_VOICE_VIEW_NONE);
     atomic_store(&s_ptt_call, false);
 }
+
+static void run_call(bool ptt, size_t waking_chunks)
+{
+    run_call_started(ptt, waking_chunks, true);
+}
 #endif
 
 static void voice_task(void *arg)
@@ -1166,6 +1197,7 @@ static void voice_task(void *arg)
     muse_audio_selftest();
     for (;;) {
         bool wake = false;
+        bool tap_start = pending_down && s_press_tap_start;
         if (!pending_down) {
             muse_input_event_t ev;
             bool asleep = muse_state_asleep();
@@ -1223,15 +1255,21 @@ static void voice_task(void *arg)
                 continue;
             }
             muse_state_poke();
-            if (ev.type != MUSE_PTT_DOWN || ev.epoch != muse_input_call_epoch()) {
+            if ((ev.type != MUSE_PTT_DOWN && ev.type != MUSE_PTT_START_CALL) ||
+                ev.epoch != muse_input_call_epoch()) {
                 muse_input_clear_call_pending(ev.mark);
                 continue;
             }
             s_press_input_epoch = ev.epoch;
             s_press_mark = ev.mark;
             wake = ev.wake;
+            tap_start = ev.type == MUSE_PTT_START_CALL;
         }
         bool ptt = muse_voice_ptt_enabled();
+        if (tap_start && !ptt) {
+            muse_input_clear_call_pending(s_press_mark);
+            continue;
+        }
         if (wake && !(ptt ? ptt_held_on_waking() : held_on_waking())) {
             /* A tap: it only woke Muse. A press posted since keeps its own mark. */
             muse_input_clear_call_pending(s_press_mark);
@@ -1246,7 +1284,10 @@ static void voice_task(void *arg)
 #if CONFIG_MUSE_REALTIME_VOICE
         if (ptt) {
             pending_down = false;
-            if (muse_voice_call_ready()) run_call(true, wake ? s_pre_fill : 0);
+            if (muse_voice_call_ready()) {
+                if (tap_start) run_call_started(true, 0, false);
+                else run_call(true, wake ? s_pre_fill : 0);
+            }
             else {
                 muse_input_clear_call_pending(s_press_mark);
                 if (!muse_wifi_connected()) muse_wifi_apply();

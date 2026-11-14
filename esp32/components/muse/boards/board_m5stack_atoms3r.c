@@ -367,9 +367,8 @@ static esp_err_t audio_init(esp_codec_dev_handle_t *spk, esp_codec_dev_handle_t 
  * The screen is the only button:
  *  - hold PTT_HOLD_MS or more: Talk, from then until release (voice note, or
  *    Select in the menu);
- *  - tap: Talk pressed for TAP_PULSE_MS, which the SDK reads as tap-to-call
- *    (start or end a live call). It is sent only once DOUBLE_TAP_MS has passed
- *    without a second tap;
+ *  - tap: start/end a call after DOUBLE_TAP_MS without a second tap. PTT uses
+ *    explicit call events; hands-free uses a TAP_PULSE_MS talk pulse;
  *  - double tap: one Aux press (open the menu, wake);
  *  - menu open: a tap is Aux at once (step down), a hold is Select.
  */
@@ -421,15 +420,27 @@ static unsigned poll_buttons(void)
     if (s_hangup_req) {
         s_hangup_req = false;
         if (st == IDLE && muse_voice_in_call()) {
+            if (muse_voice_ptt_call()) {
+                out |= MUSE_BTN_CALL_END;
+            } else {
+                out |= MUSE_BTN_TALK_PRESS;
+                st = PULSE;
+                t_edge = now;
+            }
+        }
+    }
+    if (st == PENDING && !s_btn.pressed && now - t_edge >= pdMS_TO_TICKS(DOUBLE_TAP_MS)) {
+        if (muse_voice_ptt_call()) {
+            out |= MUSE_BTN_CALL_END;
+            st = IDLE;
+        } else if (!muse_voice_in_call() && muse_voice_ptt_enabled()) {
+            out |= MUSE_BTN_CALL_START;
+            st = IDLE;
+        } else {
             out |= MUSE_BTN_TALK_PRESS;
             st = PULSE;
             t_edge = now;
         }
-    }
-    if (st == PENDING && !s_btn.pressed && now - t_edge >= pdMS_TO_TICKS(DOUBLE_TAP_MS)) {
-        out |= MUSE_BTN_TALK_PRESS;
-        st = PULSE;
-        t_edge = now;
     } else if (st == PULSE && now - t_edge >= pdMS_TO_TICKS(TAP_PULSE_MS)) {
         out |= MUSE_BTN_TALK_RELEASE;
         st = IDLE;

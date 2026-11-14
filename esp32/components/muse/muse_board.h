@@ -64,6 +64,8 @@ extern "C" {
 #define MUSE_BTN_POWER_LONG   (1u << 12)
 #define MUSE_BTN_SPEAKER_PRESS (1u << 13)
 #define MUSE_BTN_SPEAKER_RELEASE (1u << 14)
+#define MUSE_BTN_CALL_END     (1u << 17)
+#define MUSE_BTN_CALL_START   (1u << 18)
 /* Rotary reply navigation; these are steps, not held buttons. */
 #if CONFIG_MUSE_BOARD_SENSECAP_WATCHER
 #define MUSE_BTN_REVIEW_PREV  (1u << 15)

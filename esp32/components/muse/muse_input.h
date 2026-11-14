@@ -41,6 +41,7 @@ typedef enum {
     MUSE_PTT_DOWN,
     MUSE_PTT_UP,
     MUSE_PTT_END_CALL,   /* StopWatch speaker (blue) press in a call; never a talk-button release */
+    MUSE_PTT_START_CALL, /* start a PTT call without opening the microphone */
 } muse_ptt_t;
 
 typedef struct {

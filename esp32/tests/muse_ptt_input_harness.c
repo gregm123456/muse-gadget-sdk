@@ -16,9 +16,15 @@
 #include <assert.h>
 #include <stdarg.h>
 #include "muse_input.c"
+#ifndef CONFIG_MUSE_BOARD_M5STACK_STOPWATCH
+#define CONFIG_MUSE_BOARD_M5STACK_STOPWATCH 0
+#endif
+#ifndef CONFIG_MUSE_REALTIME_VOICE
+#define CONFIG_MUSE_REALTIME_VOICE 0
+#endif
 
 struct test_queue { muse_input_event_t items[32]; int n; } queue;
-static bool asleep, call, notes_mode, ble, menu, pairing, queue_full, speaker = true;
+static bool asleep, call, ptt_mode, ble, menu, pairing, queue_full, speaker = true;
 static int slept, toggled, powered_off, shutdown, selected, speaker_toggles;
 static int64_t clock_us;
 static char caption[96];
@@ -46,7 +52,7 @@ void muse_state_set_hint(const char *text) { snprintf(caption,sizeof(caption),"%
 bool muse_state_hint_pending(void) { return false; }
 bool muse_state_caption(char *p,size_t n,uint32_t *v) { (void)v; snprintf(p,n,"%s",caption); return true; }
 bool muse_voice_in_call(void) { return call; }
-bool muse_voice_ptt_enabled(void) { return CONFIG_MUSE_BOARD_M5STACK_STOPWATCH && CONFIG_MUSE_REALTIME_VOICE && !notes_mode; }
+bool muse_voice_ptt_enabled(void) { return CONFIG_MUSE_REALTIME_VOICE && ptt_mode; }
 bool muse_voice_resting(void) { return false; }
 void muse_voice_shutdown(int ms) { assert(ms==3000); ++shutdown; call=false; }
 void muse_voice_cancel_shutdown(void) { assert(powered_off); }
@@ -87,6 +93,7 @@ static int ends(void) { int n=0; for(int i=0;i<queue.n;i++) n+=queue.items[i].ty
 int main(int argc,char **argv) {
     assert(argc==2); int scenario=atoi(argv[1]); s_queue=&queue;
     bool stopwatch=CONFIG_MUSE_BOARD_M5STACK_STOPWATCH && CONFIG_MUSE_REALTIME_VOICE;
+    ptt_mode=stopwatch;
     if(scenario==1) {
         tap(); assert(!slept); ticks(DOUBLE_TICKS); assert(slept==1 && asleep);
         tap(); ticks(DOUBLE_TICKS); assert(!asleep && slept==1 && !toggled);
@@ -157,6 +164,30 @@ int main(int argc,char **argv) {
         blue(); assert(stopwatch ? (ends()==1 && !speaker_toggles) : speaker_toggles==1);
         muse_input_clear_call_pending(second); assert(!atomic_load(&s_call_pending));
         muse_input_clear_call_pending(0); assert(!atomic_load(&s_call_pending));
+    } else if(scenario==17) {
+        ptt_mode=true;
+        talk_button(MUSE_BTN_TALK_PRESS);
+        assert(queue.n==1 && queue.items[0].type==MUSE_PTT_DOWN);
+        assert(atomic_load(&s_call_pending)==queue.items[0].mark && queue.items[0].mark);
+    } else if(scenario==18) {
+        call=true;
+        dedicated_buttons(MUSE_BTN_CALL_END);
+        assert(ends()==1);
+        call=false;
+        dedicated_buttons(MUSE_BTN_CALL_END);
+        assert(ends()==1);
+    } else if(scenario==19) {
+        ptt_mode=true;
+        asleep=true;
+        dedicated_buttons(MUSE_BTN_CALL_START);
+        assert(!asleep && !queue.n);
+        pairing=true;
+        dedicated_buttons(MUSE_BTN_CALL_START);
+        assert(!queue.n);
+        pairing=false;
+        dedicated_buttons(MUSE_BTN_CALL_START);
+        assert(queue.n==1 && queue.items[0].type==MUSE_PTT_START_CALL);
+        assert(queue.items[0].mark && atomic_load(&s_call_pending)==queue.items[0].mark);
     } else if(scenario==11) {
         /* A hang-up that can't be queued still ends the call: the input epoch
          * moves, which the voice task treats as hung up, and nothing is pending. */

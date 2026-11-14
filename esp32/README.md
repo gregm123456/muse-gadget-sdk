@@ -333,16 +333,20 @@ offered on boards with the full UI and PSRAM and on the Voice PE and reSpeaker
 Lite. The DevKitC-1 and other boards without a mic and speaker don't have it,
 and builds without it don't change. With it on:
 
-- **StopWatch:** hold yellow to talk or interrupt playback; release to let Muse
+- **StopWatch:** in push-to-talk mode, hold yellow to talk or interrupt playback; release to let Muse
   answer without ending the call. A capture tail of up to 120 ms preserves the
   last syllable. Tap blue to hang up. With calls built in, yellow is the talk
   button and blue the speaker button (mute outside a call), the other way round
-  from builds without them; red stays power. Use **Settings > Sound > Voice notes** for
-  the old note-and-text mode. Interrupting playback does not cancel detached
-  background work, whose results may arrive later.
-- **Other boards:** tap the talk button to start a call, press again to hang up;
+  from builds without them; red stays power.
+- **Other boards:** in hands-free mode, tap the talk button to start a call, press again to hang up;
   holding still sends a voice note. The mic is off while Muse talks, except on
   the Voice PE when its audio chip reports echo cancellation.
+- **Call mode:** **Settings > Sound > Push-to-talk** enables holding the talk
+  button to speak during calls; a short tap ends calls on single-button devices.
+  On the AtomS3R, choose **Push-to-talk** in the one-button menu instead. A
+  tap starts the call with the microphone muted; hold the screen to talk.
+  Turn it off for hands-free calls. Outside a call, holding still sends a voice
+  note in hands-free mode.
 - A call also ends when Muse ends it, after 45 seconds of quiet (not counting
   time Muse is still working on something), or after 15 minutes. Muse may not
   hang up by itself when it says goodbye: press to end the call. If the

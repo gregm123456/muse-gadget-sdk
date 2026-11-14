@@ -116,7 +116,8 @@ static volatile bool s_nap_now;   /* ">nap": asleep, as if on battery, nap witho
 static void post(muse_ptt_t type, bool wake)
 {
     muse_input_event_t ev = { .type = type, .wake = wake, .epoch = muse_input_call_epoch() };
-    bool pending = type == MUSE_PTT_DOWN && muse_voice_ptt_enabled() && !muse_voice_in_call();
+    bool pending = (type == MUSE_PTT_DOWN || type == MUSE_PTT_START_CALL) &&
+                   muse_voice_ptt_enabled() && !muse_voice_in_call();
     if (pending) {
         uint32_t mark;
         do {
@@ -125,7 +126,8 @@ static void post(muse_ptt_t type, bool wake)
         ev.mark = mark;
         atomic_store(&s_call_pending, mark);   /* before the send, so the speaker button sees it */
     }
-    ESP_LOGI(TAG, "PTT %s%s", type == MUSE_PTT_DOWN ? "down" : type == MUSE_PTT_UP ? "up" : "end call",
+    ESP_LOGI(TAG, "PTT %s%s", type == MUSE_PTT_DOWN ? "down" : type == MUSE_PTT_UP ? "up" :
+             type == MUSE_PTT_START_CALL ? "start call" : "end call",
              wake ? " (waking)" : "");
     if (xQueueSend(s_queue, &ev, pdMS_TO_TICKS(20)) != pdTRUE) {
         /* A lost edge cannot leave a live microphone open. Invalidate the
@@ -596,6 +598,22 @@ static void power_release(void)
 
 static void dedicated_buttons(unsigned ev)
 {
+#if CONFIG_MUSE_REALTIME_VOICE
+    if ((ev & MUSE_BTN_CALL_START) && !muse_voice_in_call()) {
+        muse_state_poke();
+        if (muse_link_talk_press()) {
+            /* The screen button also confirms pairing. */
+        } else if (muse_state_asleep()) {
+            set_asleep(false, muse_board->talk_button);
+        } else {
+            post(MUSE_PTT_START_CALL, false);
+        }
+    }
+    if ((ev & MUSE_BTN_CALL_END) && muse_voice_in_call()) {
+        muse_state_poke();
+        post(MUSE_PTT_END_CALL, false);
+    }
+#endif
     bool release = (ev & MUSE_BTN_POWER_RELEASE) != 0;
     /* Preserve release-before-new-press ordering for latched boards. */
     if (s_power_down && release) {
@@ -662,7 +680,8 @@ static void input_task(void *arg)
         /* Any press leaves the video view (its release then does nothing). */
         const unsigned presses = MUSE_BTN_TALK_PRESS | MUSE_BTN_AUX_PRESS | MUSE_BTN_POWER_PRESS |
                                  MUSE_BTN_SPEAKER_PRESS | MUSE_BTN_UP | MUSE_BTN_DOWN | MUSE_BTN_LEFT |
-                                 MUSE_BTN_RIGHT | MUSE_BTN_ENTER | MUSE_BTN_ESCAPE;
+                                 MUSE_BTN_RIGHT | MUSE_BTN_ENTER | MUSE_BTN_ESCAPE |
+                                 MUSE_BTN_CALL_START | MUSE_BTN_CALL_END;
         if ((ev & presses) && muse_video_is_open()) {
             muse_video_close();
             ev &= ~(presses | MUSE_BTN_POWER_LONG);
